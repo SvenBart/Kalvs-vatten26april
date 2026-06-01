@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Färgtalet i Kalvsjöns avrinningsområde</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.0/dist/proj4.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #header {
+            background: #2c3e50;
+            color: white;
+            padding: 12px 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            flex-shrink: 0;
+        }
+        #header h1 { font-size: 21px; margin-bottom: 2px; }
+        #header p { font-size: 13px; opacity: 0.85; }
+        #map { flex: 1; width: 100%; }
+
+        /* Controls panel */
+        #controls {
+            position: absolute;
+            top: 80px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 260px;
+        }
+        #controls h3 { margin-bottom: 10px; font-size: 15px; color: #2c3e50; }
+        #dateSelector {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 12px;
+            border: 2px solid #3498db;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        #pointCount {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 12px;
+            padding: 4px 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        #legend { padding-top: 12px; border-top: 1px solid #ddd; }
+        #legend h4 { font-size: 13px; margin-bottom: 8px; color: #2c3e50; }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 2px solid #444;
+            flex-shrink: 0;
+        }
+
+        /* Popup styling */
+        .leaflet-popup-content-wrapper { border-radius: 8px; max-width: 320px; }
+        .leaflet-popup-content { margin: 14px; font-size: 13px; line-height: 1.5; min-width: 220px; }
+        .popup-title { font-size: 15px; font-weight: bold; color: #2c3e50; margin-bottom: 4px; }
+        .popup-avg {
+            background: #eaf4fb;
+            border-left: 4px solid #3498db;
+            padding: 6px 10px;
+            margin: 8px 0;
+            border-radius: 0 4px 4px 0;
+            font-size: 13px;
+        }
+        .popup-avg strong { font-size: 15px; }
+        .popup-session {
+            margin-top: 10px;
+            border-top: 1px solid #eee;
+            padding-top: 8px;
+        }
+        .popup-session-date {
+            font-weight: 600;
+            color: #34495e;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .popup-readings {
+            color: #555;
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        .popup-readings span { color: #888; }
+        .popup-session-avg {
+            font-weight: 600;
+            color: #2980b9;
+            font-size: 12px;
+        }
+        .popup-meta { color: #666; font-size: 12px; margin-top: 3px; }
+        .popup-meta span { font-weight: 600; color: #444; }
+        .no-data { color: #aaa; font-style: italic; font-size: 12px; }
+
+        /* Loading overlay */
+        #loading {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 2000;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Färgtalet i Kalvsjöns avrinningsområde</h1>
+        <p>Mätningar av vattenfärg (mg Pt/l) vid flera tillfällen</p>
+    </div>
+    <div id="map"></div>
+    <div id="loading">⏳ Laddar kartdata…</div>
+
+    <div id="controls">
+        <h3>Välj mättillfälle</h3>
+        <select id="dateSelector">
+            <option value="">Laddar…</option>
+        </select>
+        <div id="pointCount"></div>
+        <div id="legend">
+            <h4>Färgtal (mg Pt/l)</h4>
+            <div class="legend-item"><div class="legend-color" style="background:#2ecc71;"></div><span>&lt; 77</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#f1c40f;"></div><span>77 – 150</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#e74c3c;"></div><span>151 – 250</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#8b4513;"></div><span>251 – 350</span></div>
+            <div class="legend-item"><div class="legend-color" style="background:#000000;"></div><span>&gt; 350</span></div>
+            <div class="legend-item" style="margin-top:6px;"><div class="legend-color" style="background:#cccccc;"></div><span>Ingen mätning för valt tillfälle</span></div>
+        </div>
+    </div>
+
+    <script>
+    (() => {
+        // --- Karta ---
+        const map = L.map('map').setView([6341000, 383000], 11);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        // SWEREF99TM → WGS84
+        proj4.defs('SWEREF99TM', '+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
+        function sweref99ToWgs84(N, E) {
+            return proj4('SWEREF99TM', 'WGS84', [E, N]);
+        }
+
+        // Färgklasser
+        function getColor(val) {
+            if (val === null || val === undefined) return '#cccccc';
+            if (val < 77)  return '#2ecc71';
+            if (val < 151) return '#f1c40f';
+            if (val < 251) return '#e74c3c';
+            if (val < 351) return '#8b4513';
+            return '#000000';
+        }
+
+        // --- Data ---
+        let punkter = [];      // [{Punkt_ID, Platsnamn, N, E}]
+        // sessioner: { Punkt_ID: [ {datum, varden:[n,...], medelVarde, pH, siktdjup}, ... ] }
+        let sessioner = {};
+        // overallMedel: { Punkt_ID: medelvärde av alla sessioner }
+        let overallMedel = {};
+        let allDates = [];
+        let markers = L.layerGroup().addTo(map);
+
+        // Parsa CSV-nummer
+        function num(s) {
+            if (!s || s.trim() === '') return null;
+            const v = parseFloat(s.replace(',', '.'));
+            return isNaN(v) ? null : v;
+        }
+
+        function parseMatningar(rows) {
+            const tmp = {};
+            rows.forEach(row => {
+                const pid = row.Punkt_ID ? row.Punkt_ID.trim().toUpperCase() : null;
+                const datum = row.Datum ? row.Datum.trim() : null;
+                if (!pid || !datum) return;
+
+                const fargtalCols = ['Färgtal_1','Färgtal_2','Färgtal_3','Färgtal_4','Färgtal_5','Färgtal_6','Färgtal_7'];
+                const varden = fargtalCols.map(c => num(row[c])).filter(v => v !== null);
+
+                const medelVarde = varden.length > 0
+                    ? Math.round(varden.reduce((a,b)=>a+b,0) / varden.length)
+                    : null;
+
+                const pH = num(row['pH']);
+                const sikt = num(row['Siktdjup']);
+
+                if (!tmp[pid]) tmp[pid] = [];
+                tmp[pid].push({ datum, varden, medelVarde, pH, siktdjup: sikt });
+            });
+
+            // Beräkna overall medelvärde
+            const overall = {};
+            for (const [pid, sess] of Object.entries(tmp)) {
+                const avgs = sess.map(s => s.medelVarde).filter(v => v !== null);
+                overall[pid] = avgs.length > 0
+                    ? Math.round(avgs.reduce((a,b)=>a+b,0) / avgs.length)
+                    : null;
+            }
+
+            return { sessioner: tmp, overallMedel: overall };
+        }
+
+        function buildPopup(punkt, sessliste) {
+            const pid = punkt.Punkt_ID;
+            const overall = overallMedel[pid];
+
+            let html = `<div class="popup-title">📍 ${punkt.Platsnamn} (${pid})</div>`;
+
+            if (overall !== null && overall !== undefined) {
+                html += `<div class="popup-avg">Medelvärde alla tillfällen: <strong>${overall} mg Pt/l</strong></div>`;
+            }
+
+            if (!sessliste || sessliste.length === 0) {
+                html += `<div class="no-data">Inga mätningar registrerade</div>`;
+                return html;
+            }
+
+            // Sortera datum kronologiskt
+            const sorted = [...sessliste].sort((a,b) => a.datum.localeCompare(b.datum));
+
+            sorted.forEach(sess => {
+                html += `<div class="popup-session">`;
+                html += `<div class="popup-session-date">🗓 ${sess.datum}</div>`;
+
+                if (sess.varden.length > 0) {
+                    const readingStr = sess.varden.join(', ');
+                    html += `<div class="popup-readings"><span>Mätvärden:</span> ${readingStr} mg Pt/l</div>`;
+                    if (sess.medelVarde !== null) {
+                        html += `<div class="popup-session-avg">⌀ Medel: ${sess.medelVarde} mg Pt/l</div>`;
+                    }
+                }
+                if (sess.pH !== null) {
+                    html += `<div class="popup-meta"><span>pH:</span> ${sess.pH.toFixed(2)}</div>`;
+                }
+                if (sess.siktdjup !== null) {
+                    html += `<div class="popup-meta"><span>Siktdjup:</span> ${sess.siktdjup.toFixed(1)} m</div>`;
+                }
+                html += `</div>`;
+            });
+
+            return html;
+        }
+
+        function updateMap(selectedDate) {
+            markers.clearLayers();
+            let visibleCount = 0;
+
+            punkter.forEach(punkt => {
+                const pid = punkt.Punkt_ID;
+                const alleSessioner = sessioner[pid] || [];
+                if (alleSessioner.length === 0) return; // punkt aldrig mätt – visa ej
+
+                let displayValue;
+                if (selectedDate === 'medel') {
+                    displayValue = overallMedel[pid];
+                } else {
+                    const sess = alleSessioner.find(s => s.datum === selectedDate);
+                    displayValue = sess ? sess.medelVarde : null;
+                }
+
+                // Visa alltid punkten om den har mätningar, men grå om inget värde för valt datum
+                const color = getColor(displayValue);
+
+                const lonlat = sweref99ToWgs84(parseFloat(punkt.N), parseFloat(punkt.E));
+                const lat = lonlat[1], lon = lonlat[0];
+
+                const marker = L.circleMarker([lat, lon], {
+                    radius: 10,
+                    fillColor: color,
+                    color: displayValue !== null ? '#333' : '#aaa',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: displayValue !== null ? 0.85 : 0.5
+                });
+
+                marker.bindPopup(buildPopup(punkt, alleSessioner), { maxWidth: 320 });
+                marker.addTo(markers);
+                visibleCount++;
+            });
+
+            const count = selectedDate === 'medel'
+                ? `Visar medelvärde för ${visibleCount} punkter (${allDates.length} mättillfällen)`
+                : `Visar ${allDates.filter(d=>d===selectedDate).length > 0 ? selectedDate : ''} – ${visibleCount} punkter (grå = ej mätt detta datum)`;
+            document.getElementById('pointCount').textContent = count;
+        }
+
+        function updateDateSelector() {
+            // Samla alla datum
+            const dateSet = new Set();
+            for (const sessArr of Object.values(sessioner)) {
+                sessArr.forEach(s => dateSet.add(s.datum));
+            }
+            allDates = [...dateSet].sort();
+
+            const sel = document.getElementById('dateSelector');
+            sel.innerHTML = `<option value="medel">⌀ Medelvärde – alla tillfällen</option>`;
+            allDates.forEach(d => {
+                sel.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+
+            updateMap('medel');
+        }
+
+        function loadData(punkterCsv, matningarCsv) {
+            const pDelim = punkterCsv.includes(';') ? ';' : ',';
+            const mDelim = matningarCsv.includes(';') ? ';' : ',';
+
+            Papa.parse(punkterCsv, {
+                header: true, delimiter: pDelim, skipEmptyLines: true,
+                complete(res) {
+                    punkter = res.data.filter(r => r.Punkt_ID && r.Punkt_ID.trim() !== '');
+
+                    Papa.parse(matningarCsv, {
+                        header: true, delimiter: mDelim, skipEmptyLines: true,
+                        complete(res2) {
+                            const raw = res2.data.filter(r => r.Punkt_ID && r.Punkt_ID.trim() !== '' && r.Datum && r.Datum.trim() !== '');
+                            const parsed = parseMatningar(raw);
+                            sessioner = parsed.sessioner;
+                            overallMedel = parsed.overallMedel;
+
+                            // Centrera kartan
+                            const coords = punkter
+                                .map(p => sweref99ToWgs84(parseFloat(p.N), parseFloat(p.E)))
+                                .filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+                            if (coords.length > 0) {
+                                const lats = coords.map(c=>c[1]), lons = coords.map(c=>c[0]);
+                                map.fitBounds([
+                                    [Math.min(...lats), Math.min(...lons)],
+                                    [Math.max(...lats), Math.max(...lons)]
+                                ], { padding: [30, 30] });
+                            }
+
+                            updateDateSelector();
+                            document.getElementById('loading').style.display = 'none';
+                        },
+                        error(e) { document.getElementById('loading').textContent = 'Fel vid läsning av mätningar: ' + e.message; }
+                    });
+                },
+                error(e) { document.getElementById('loading').textContent = 'Fel vid läsning av punkter: ' + e.message; }
+            });
+        }
+
+        document.getElementById('dateSelector').addEventListener('change', function() {
+            updateMap(this.value);
+        });
+
+        // Ladda från GitHub
+        const githubUser = 'svenbart';
+        const githubRepo = 'Kalvs-vatten26april';
+        const punkterUrl  = `https://raw.githubusercontent.com/${githubUser}/${githubRepo}/main/punkter.csv`;
+        const matningarUrl = `https://raw.githubusercontent.com/${githubUser}/${githubRepo}/main/matningar.csv`;
+
+        fetch(punkterUrl)
+            .then(r => { if (!r.ok) throw new Error('Kunde inte ladda punkter.csv'); return r.text(); })
+            .then(pCsv => fetch(matningarUrl)
+                .then(r => { if (!r.ok) throw new Error('Kunde inte ladda matningar.csv'); return r.text(); })
+                .then(mCsv => loadData(pCsv, mCsv))
+            )
+            .catch(err => {
+                document.getElementById('loading').textContent = 'Kunde inte ladda data från GitHub: ' + err.message;
+            });
+
+    })();
+    </script>
+</body>
+</html>
