@@ -99,19 +99,10 @@
             font-size: 12px;
             margin-bottom: 4px;
         }
-        .popup-readings {
-            color: #555;
-            font-size: 12px;
-            margin-bottom: 3px;
-        }
-        .popup-readings span { color: #888; }
-        .popup-session-avg {
-            font-weight: 600;
-            color: #2980b9;
-            font-size: 12px;
-        }
-        .popup-meta { color: #666; font-size: 12px; margin-top: 3px; }
-        .popup-meta span { font-weight: 600; color: #444; }
+        .popup-session-avg { font-size: 12px; color: #222; margin-bottom: 2px; }
+        .popup-session-avg span { font-weight: 600; }
+        .popup-meta { color: #222; font-size: 12px; margin-top: 2px; }
+        .popup-meta span { font-weight: 600; }
         .no-data { color: #aaa; font-style: italic; font-size: 12px; }
 
         /* Loading overlay */
@@ -251,12 +242,8 @@
                 html += `<div class="popup-session">`;
                 html += `<div class="popup-session-date">🗓 ${sess.datum}</div>`;
 
-                if (sess.varden.length > 0) {
-                    const readingStr = sess.varden.join(', ');
-                    html += `<div class="popup-readings"><span>Mätvärden:</span> ${readingStr} mg Pt/l</div>`;
-                    if (sess.medelVarde !== null) {
-                        html += `<div class="popup-session-avg">⌀ Medel: ${sess.medelVarde} mg Pt/l</div>`;
-                    }
+                if (sess.medelVarde !== null) {
+                    html += `<div class="popup-session-avg"><span>Färgtal:</span> ${sess.medelVarde} mg Pt/l</div>`;
                 }
                 if (sess.pH !== null) {
                     html += `<div class="popup-meta"><span>pH:</span> ${sess.pH.toFixed(2)}</div>`;
